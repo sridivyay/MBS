@@ -1,22 +1,27 @@
+import datetime
+import os
+import sys
 from pathlib import Path
 
 import telegram
 from mbs.scripts.mbs_bill import get_bill_for_the_month
 from mbs.mbs_log import init_logger
-from mbs.commons import index_to_month, load_initial_configuration, get_parent_dir
+from mbs.commons import index_to_month, load_initial_configuration, get_parent_dir, get_config_file_path
 
 
 def send_mess_bill_notification():
     try:
         mbs_common_logger = init_logger()
-        config_path = get_parent_dir(str(Path().absolute()))
+        config_path = get_config_file_path(str(os.path.realpath(__file__)))
         intial_configuration = load_initial_configuration(config_path)
         mbs_common_logger.critical('Loaded the configuration for the mess bill')
         token = str(intial_configuration["telegram_token"])
         due_date = str(intial_configuration["due_date"])
         bot = telegram.Bot(token=token)
-        bills_for_month = get_bill_for_the_month()
+        curr_month = datetime.datetime.today().month
+        bills_for_month = get_bill_for_the_month(config_path)
         billed_month = None
+
         if bills_for_month:
             bill = bills_for_month[0]
             billed_month = str(bill['billed_key'])[4:]
@@ -30,4 +35,6 @@ def send_mess_bill_notification():
             mbs_common_logger.info('Message sent to the user ' + str(user_id))
     except Exception as e:
         mbs_common_logger.critical(e)
+        print(sys.exc_info())
+
 

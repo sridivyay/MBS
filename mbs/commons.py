@@ -85,7 +85,9 @@ def load_initial_configuration(config_file_path):
     return data
 
 
-def load_database_config(file_path):
+def load_database_config(config_path):
+    path = '/config/initial_config.json'
+    file_path = str(config_path) + path
     with open(file_path) as data_file:
         data = json.load(data_file)
         try:
@@ -162,3 +164,8 @@ def get_prev_month(date=datetime.today()):
         except ValueError:
             prev_month_timestamp = get_prev_month(date=date.replace(day=date.day - 1))
     return prev_month_timestamp.month, prev_month_timestamp.year
+
+
+def get_config_file_path(path):
+    index = str(path).find('/mbs') + 4
+    return path[:index]

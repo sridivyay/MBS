@@ -1,20 +1,16 @@
+import os
 from datetime import datetime
-from mbs.commons import load_database_config, get_parent_dir
+from mbs.commons import load_database_config, get_parent_dir, get_config_file_path
 from mbs.mbs_database_access import execute_query, set_config, insert_details
 from mbs.mbs_exceptions import InsertionFailed, BillGenerationFailed
-from pathlib import Path
 
 
-def get_bill_for_the_month():
-    config_path = get_parent_dir(str(Path().absolute()))
-    path = 'config/initial_config.json'
-    print(config_path)
-    config_file = config_path + path
-    db_config = load_database_config(config_file)
+def get_bill_for_the_month(config_path):
+    db_config = load_database_config(config_path)
     set_config(db_config)
     curr_month = datetime.today().month
     curr_year = datetime.today().year
-    sql_query = " select T_id,cost,billed_key from monthly_bill where MONTH(billed_time) = %s and YEAR(billed_time)=%s"
+    sql_query = " select T_id,cost,billed_key from monthly_bill where MONTH(billed_time) = %s and YEAR(billed_time)= %s"
     parms = (curr_month, curr_year,)
     db_result = execute_query(sql_query, parms, 1)
     return db_result
@@ -41,10 +37,8 @@ def update_db_with_bill(db_result):
 
 
 def generate_bill(month):
-    config_path = get_parent_dir(str(Path().absolute()))
-    path = 'config/initial_config.json'
-    config_file = config_path + path
-    db_config = load_database_config(config_file)
+    config_path  = get_config_file_path(str(os.path.realpath(__file__)))
+    db_config = load_database_config(config_path)
     set_config(db_config)
     sql_query = " select T_id,sum(cost) as price from purchase_order where MONTH(purchase_time) = %s group by T_id"
     parms = (month,)
