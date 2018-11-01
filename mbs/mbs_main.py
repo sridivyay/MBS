@@ -1,17 +1,14 @@
-import json
-
 import datetime
-import os
 import time
-from os import path
+from pathlib import Path
 
 import MySQLdb
 import telegram
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import Updater, ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
-from mbs.commons import is_empty, is_valid_slot, get_billed_details, get_billed_history, default_db_config, ten_space, \
-    twenty_space
+from mbs.commons import is_empty, is_valid_slot, get_billed_details, get_billed_history, ten_space, \
+    twenty_space, index_to_month, load_initial_configuration, get_prev_month
 from mbs.mbs_classes import MessMenu
 from mbs.mbs_database_access import execute_query, insert_details, set_config
 
@@ -23,8 +20,8 @@ from mbs.mbs_log import init_logger
 mbs_common_logger = None
 database_config = ''
 telegram_token = ''
-config_file_name = '/config/initial_config.json'
-pdf_file_name = '/config/dummy.pdf'
+pdf_file_url = ''
+payment_provider_token = ' '
 
 slot_vs_callback_data = [3, 5, 7]
 callback_data_vs_slot = {'0': '0', '1': '1', '2': '2', '3': '0', '4': '0', '5': '1', '6': '1', '7': '2', '8': '2'}
@@ -45,35 +42,9 @@ please_register_message = 'We know you are hungry. Register using /register. Yum
     Loads initial configuration 
         Telegram token
         database config
+        Mess mess pdf file url
+        Due date for bill payment
 '''
-
-
-def load_initial_configuration():
-    mbs_common_logger.critical('Loading the configuration file')
-    config_file = path.join(path.dirname(path.abspath(__file__))) + config_file_name
-    with open(config_file) as data_file:
-        data = json.load(data_file)
-
-    # necessary to load telegram token
-    mbs_common_logger.info('Loading telegram token')
-    try:
-        global telegram_token
-        telegram_token = data["telegram_token"]
-        mbs_common_logger.debug('Telegram token is ' + str(telegram_token))
-
-    except KeyError:
-        mbs_common_logger.critical('Telegram token is missing')
-        raise TelegramTokenMissing()
-
-    global database_config
-    try:
-        database_config = data["database_config"]
-    except KeyError:
-        # updating with the default values
-        database_config = default_db_config
-
-    mbs_common_logger.debug('database config is ' + str(database_config))
-    mbs_common_logger.critical('Loading of the configuration file is complete')
 
 
 def get_item_quantity_telegram_buttons(item_button_id):
@@ -105,35 +76,60 @@ def telegram_slot_menu_operations(slot):
     return reply_markup
 
 
+def pay_monthly_mess_bill(bot, update):
+    chat_id = update.message.chat.id
+    curr_month = datetime.datetime.today().month
+    curr_month = index_to_month[str(curr_month)]
+    title = "Monthly mess bill " + str(curr_month)
+    description = "Monthly mess bill for the month of " + str(curr_month)
+    payload = "MBS"
+    provider_token = payment_provider_token
+    start_parameter = "test-payment"
+    currency = "UZS"
+    demo_price = 833999
+    prices = [LabeledPrice("Month mess bill", demo_price)]
+
+    mbs_common_logger.info('Sending payment option to user ' + str(chat_id))
+    try:
+        bot.sendInvoice(chat_id, title, description, payload,
+                        provider_token, start_parameter, currency, prices)
+    except Exception as e:
+        mbs_common_logger.critical('Some error has occured while sending the invoice for the user ' + str(chat_id))
+        mbs_common_logger.critical(e)
+        message = 'Oopsie. Something is wrong'
+        bot.send_message(chat_id=update.message.chat_id, text=message)
+
+
 def start(bot, update):
     message = 'Hi Foodie,\nWelcome to the mess billing system.\n' \
-              '/menu - To get the Menu\n' + '/bill - To get month bill\n' + '/bills - History of bills'
+              '/menu - to get the Menu\n' + '/bill - to get month bill\n' + '/bills - history of bills\n' + \
+              '/paybill - pay mess bill for the month'
     mbs_common_logger.info('User ' + str(update.message.chat.id) + ' has initiated start')
     bot.send_message(chat_id=update.message.chat_id, text=message)
 
 
 def daily(bot, update):
-    # TODO: Read from config file
-    pdf_link = 'https://s3.ap-south-1.amazonaws.com/mbsdemo/mess_menu.pdf'
-    mbs_common_logger.info('User ' + str(update.message.chat.id) + ' has requested the daily menu')
-    try:
-        bot.sendDocument(update.message.chat_id, pdf_link)
-    except Exception as e:
-        mbs_common_logger.critical(e)
-    mbs_common_logger.info('User ' + str(update.message.chat.id) + ' sent the daily menu')
+    if pdf_file_url:
+        mbs_common_logger.info('User ' + str(update.message.chat.id) + ' has requested the daily menu')
+        try:
+            bot.sendDocument(update.message.chat_id, pdf_file_url)
+        except Exception as e:
+            mbs_common_logger.critical(e)
+        mbs_common_logger.info('User ' + str(update.message.chat.id) + ' sent the daily menu')
+    else:
+        daily(bot, update)
 
 
 def menu(bot, update):
     # Send buttons on today's menu depending on the slot.
     reply_markup = telegram_slot_input_options()
-    mbs_common_logger.info('User ' + str(update.message.chat.id) + ' has requested the menu')
+    mbs_common_logger.critical('User ' + str(update.message.chat.id) + ' has requested the menu')
     bot.send_message(chat_id=update.message.chat_id, text='Select the menu\n',
                      reply_markup=reply_markup)
 
 
 def load_all_mbs_users():
     global valid_users_mbs
-    # TODO: Load users frequently
     mbs_common_logger.info('Loading the users')
     sql_stmt = 'Select T_id from user'
     parms = ()
@@ -149,7 +145,6 @@ def load_all_mbs_users():
 
 def load_menu_for_day():
     global mess_menu_today
-    # TODO: Update the menu daily
     # monday starts from 0
     mbs_common_logger.info('Loading the menu for MBS')
     weekday = datetime.datetime.today().weekday()
@@ -174,10 +169,12 @@ def get_bill(bot, update):
     global valid_users_mbs
     user_id = update.message.chat.id
     mbs_common_logger.info('User ' + str(user_id) + ' has requested the bill')
+    curr_month = datetime.datetime.today().month
     if valid_users_mbs[str(user_id)]:
         sql_stmt = \
-            'Select Item_name, cost, qty, purchase_time from purchase_order, items where T_id = %s and Id = item_id'
-        parms = (user_id,)
+            'Select Item_name, cost, qty, purchase_time from purchase_order, items where T_id = %s ' \
+            'and Id = item_id and MONTH(purchase_time)=%s'
+        parms = (user_id, curr_month,)
         db_result = execute_query(sql_stmt, parms, 1)
         # TODO: change logic to get the bill only for this month
         message = 'Your bill details are \n' + 'Item' + twenty_space + 'Quantity' + ten_space + 'Cost' + ten_space + 'Purchase_date' + '\n' + get_billed_details(
@@ -458,6 +455,12 @@ def telegram_integration_code_init():
     ge_bills_handler = CommandHandler('bills', get_bills)
     updater.dispatcher.add_handler(ge_bills_handler)
 
+    if payment_provider_token:
+        pay_bill = CommandHandler("paybill", pay_monthly_mess_bill)
+        updater.dispatcher.add_handler(pay_bill)
+    else:
+        mbs_common_logger.critical('As payment is not able. Cannot pay bills')
+
     register_handler = ConversationHandler(
         entry_points=[CommandHandler('register', callback=register)],
         states={
@@ -484,16 +487,29 @@ def mbs_data_update():
     mbs_common_logger.info('Loading the data is completed')
 
 
+def set_initial_configuration(data):
+    global telegram_token
+    global pdf_file_url
+    global database_config
+    global payment_provider_token
+    telegram_token = data["telegram_token"]
+    database_config = data["database_config"]
+    pdf_file_url = data["mess_menu"]
+    payment_provider_token = data["payment_provider_token"]
+
+
 try:
     mbs_common_logger = init_logger()
-    load_initial_configuration()
+    config_file_path = str(Path().absolute())
+    intial_configuration = load_initial_configuration(config_file_path)
+    set_initial_configuration(intial_configuration)
     set_config(database_config)
     mbs_data_update()
     updater, dispatcher = telegram_integration_code_init()
     updater.start_polling()
 
     while True:
-        time.sleep(60)
+        time.sleep(3600)
         updater.stop()
         mbs_common_logger.info('Updating the cached data')
         mbs_data_update()

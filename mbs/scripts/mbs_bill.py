@@ -1,16 +1,16 @@
-import logging
 from datetime import datetime
-from mbs.commons import load_database_config
+from mbs.commons import load_database_config, get_parent_dir
 from mbs.mbs_database_access import execute_query, set_config, insert_details
 from mbs.mbs_exceptions import InsertionFailed, BillGenerationFailed
-
-
+from pathlib import Path
 
 
 def get_bill_for_the_month():
-    # TODO: Get path at runtime
-    path = '.././config/initial_config.json'
-    db_config = load_database_config(path)
+    config_path = get_parent_dir(str(Path().absolute()))
+    path = 'config/initial_config.json'
+    print(config_path)
+    config_file = config_path + path
+    db_config = load_database_config(config_file)
     set_config(db_config)
     curr_month = datetime.today().month
     curr_year = datetime.today().year
@@ -18,7 +18,6 @@ def get_bill_for_the_month():
     parms = (curr_month, curr_year,)
     db_result = execute_query(sql_query, parms, 1)
     return db_result
-
 
 
 def update_db_with_bill(db_result):
@@ -32,6 +31,7 @@ def update_db_with_bill(db_result):
         sql_insert_query2 = """ INSERT INTO monthly_bill(T_id, billed_time, cost,billed_key) VALUES (%s,%s,%s,%s) """
 
         for result in db_result:
+            print(result)
             parms = (result['T_id'], curr_time, result['price'], billed_key)
             result = insert_details(sql_insert_query, parms)
             result = insert_details(sql_insert_query2, parms)
@@ -41,9 +41,10 @@ def update_db_with_bill(db_result):
 
 
 def generate_bill(month):
-    # TODO: Get path at runtime
-    path = '.././config/initial_config.json'
-    db_config = load_database_config(path)
+    config_path = get_parent_dir(str(Path().absolute()))
+    path = 'config/initial_config.json'
+    config_file = config_path + path
+    db_config = load_database_config(config_file)
     set_config(db_config)
     sql_query = " select T_id,sum(cost) as price from purchase_order where MONTH(purchase_time) = %s group by T_id"
     parms = (month,)
@@ -54,7 +55,3 @@ def generate_bill(month):
 
     except Exception as e:
         print(e)
-
-
-curr_month = datetime.today().month
-generate_bill(curr_month)
