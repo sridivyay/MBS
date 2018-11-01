@@ -1,0 +1,9 @@
+{
+  "telegram_token": "MBS",
+  "database_config": {
+    "user": "user1",
+    "password": "user1",
+    "host": "127.0.0.1"
+  },
+  "mess_bill": "https://s3.ap-south-1.amazonaws.com/mbsdemo/mess_menu.pdf"
+}
