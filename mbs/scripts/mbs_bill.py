@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from mbs.commons import load_database_config, get_parent_dir, get_config_file_path
+from mbs.commons import load_database_config, get_config_file_path
 from mbs.mbs_database_access import execute_query, set_config, insert_details
 from mbs.mbs_exceptions import InsertionFailed, BillGenerationFailed
 

@@ -350,7 +350,7 @@ def button_handlers(bot, update):
 
 def register(bot, update):
     share_contact_request = 'Please share your contact to continue the MBS'
-    reply_markup = telegram.ReplyKeyboardMarkup([[telegram.KeyboardButton('Share contact', request_contact=True)]])
+    reply_markup = telegram.ReplyKeyboardMarkup([[telegram.KeyboardButton('Share contact', request_contact=True)]],one_time_keyboard=True)
     bot.send_message(chat_id=update.message.chat_id, text=share_contact_request, reply_markup=reply_markup)
     return CONTACT
 
