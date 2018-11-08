@@ -10,9 +10,6 @@ default_db_config = {
     "host": "127.0.0.1"
 }
 config_file_name = '/config/initial_config.json'
-ten_space = '          '
-twenty_space = ten_space + ten_space
-two_space = '  '
 path = 'config/initial_config.json'
 
 index_to_month = {"9": "September",
@@ -120,27 +117,6 @@ def is_valid_slot(slot):
         return False
     else:
         return True
-
-
-def get_formatted_billed_detail(record):
-    purchase_time = datetime.strptime(str(record['purchase_time']), '%Y-%m-%d %H:%M:%S')
-    item_name = (str(record['Item_name']).ljust(20, ' '))[0:20]
-    cost = str(record['cost']).ljust(6, ' ')
-    quantity = str(record['qty']).ljust(16, ' ')
-    billed_detail = "%s %s %s %s\n" % (item_name, quantity, cost, str(purchase_time))
-    return billed_detail
-
-
-def get_billed_details(db_result):
-    bill_details = ''
-    if db_result:
-        bill_details = ''
-        cost = 0
-        for record in db_result:
-            bill_details = bill_details + get_formatted_billed_detail(record)
-            cost = cost + int(record['cost'])
-        bill_details = bill_details + '\n\nBill for month until now is ' + str(cost)
-    return bill_details
 
 
 def get_billed_history(db_result):

@@ -7,8 +7,9 @@ import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import Updater, ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
-from mbs.commons import is_empty, is_valid_slot, get_billed_details, get_billed_history, ten_space, \
-    twenty_space, index_to_month, load_initial_configuration, get_prev_month
+from mbs.commons import is_empty, is_valid_slot, get_billed_history, index_to_month, load_initial_configuration
+from mbs.mbs_aws import upload_bill_to_s3_and_get_object_path
+from mbs.mbs_bill_format import get_bill_data, generate_bill_pdf
 from mbs.mbs_classes import MessMenu
 from mbs.mbs_database_access import execute_query, insert_details, set_config
 
@@ -176,16 +177,18 @@ def get_bill(bot, update):
             'and Id = item_id and MONTH(purchase_time)=%s'
         parms = (user_id, curr_month,)
         db_result = execute_query(sql_stmt, parms, 1)
-        # TODO: change logic to get the bill only for this month
-        message = 'Your bill details are \n' + 'Item' + twenty_space + 'Quantity' + ten_space + 'Cost' + ten_space + 'Purchase_date' + '\n' + get_billed_details(
-            db_result)
-        mbs_common_logger.info('Bill has been sent to the User: ' + str(user_id))
+
+        df = get_bill_data(db_result)
+        generate_bill_pdf(df, user_id)
+        aws_url = upload_bill_to_s3_and_get_object_path(user_id)
+
+        mbs_common_logger.info('Bill has been sent to the User: ' + str(user_id) + '. The file path:' + aws_url)
+        bot.sendDocument(update.message.chat_id, aws_url)
 
     else:
         message = please_register_message
         mbs_common_logger.info('Denied getbill request for the user ' + str(user_id) + ' as not a valid user')
-
-    bot.send_message(chat_id=update.message.chat_id, text=message)
+        bot.send_message(chat_id=update.message.chat_id, text=message)
 
 
 def get_bills(bot, update):
@@ -350,7 +353,8 @@ def button_handlers(bot, update):
 
 def register(bot, update):
     share_contact_request = 'Please share your contact to continue the MBS'
-    reply_markup = telegram.ReplyKeyboardMarkup([[telegram.KeyboardButton('Share contact', request_contact=True)]],one_time_keyboard=True)
+    reply_markup = telegram.ReplyKeyboardMarkup([[telegram.KeyboardButton('Share contact', request_contact=True)]],
+                                                one_time_keyboard=True)
     bot.send_message(chat_id=update.message.chat_id, text=share_contact_request, reply_markup=reply_markup)
     return CONTACT
 
