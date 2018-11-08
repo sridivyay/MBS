@@ -78,27 +78,37 @@ def telegram_slot_menu_operations(slot):
 
 
 def pay_monthly_mess_bill(bot, update):
+    global valid_users_mbs
     chat_id = update.message.chat.id
-    curr_month = datetime.datetime.today().month
-    curr_month = index_to_month[str(curr_month)]
-    title = "Monthly mess bill " + str(curr_month)
-    description = "Monthly mess bill for the month of " + str(curr_month)
-    payload = "MBS"
-    provider_token = payment_provider_token
-    start_parameter = "test-payment"
-    currency = "UZS"
-    demo_price = 833999
-    prices = [LabeledPrice("Month mess bill", demo_price)]
+    mbs_common_logger.critical('User: ' + str(chat_id) + ' has requested bill payment')
 
-    mbs_common_logger.info('Sending payment option to user ' + str(chat_id))
     try:
-        bot.sendInvoice(chat_id, title, description, payload,
-                        provider_token, start_parameter, currency, prices)
-    except Exception as e:
-        mbs_common_logger.critical('Some error has occured while sending the invoice for the user ' + str(chat_id))
-        mbs_common_logger.critical(e)
-        message = 'Oopsie. Something is wrong'
-        bot.send_message(chat_id=update.message.chat_id, text=message)
+        if valid_users_mbs[str(chat_id)]:
+            curr_month = datetime.datetime.today().month
+            curr_month = index_to_month[str(curr_month)]
+            title = "Monthly mess bill " + str(curr_month)
+            description = "Monthly mess bill for the month of " + str(curr_month)
+            payload = "MBS"
+            provider_token = payment_provider_token
+            start_parameter = "test-payment"
+            currency = "UZS"
+            demo_price = 833999
+            prices = [LabeledPrice("Month mess bill", demo_price)]
+
+            mbs_common_logger.info('Sending payment option to user ' + str(chat_id))
+            try:
+                bot.sendInvoice(chat_id, title, description, payload,
+                                provider_token, start_parameter, currency, prices)
+            except Exception as e:
+                mbs_common_logger.critical(
+                    'Some error has occured while sending the invoice for the user ' + str(chat_id))
+                mbs_common_logger.critical(e)
+                message = 'Oopsie. Something is wrong'
+                bot.send_message(chat_id=chat_id, text=message)
+    except:
+        message = 'You are not registered hence cannot pay bill you silly, \n' + please_register_message
+        mbs_common_logger.info('Denied pay bill request for the user ' + str(chat_id) + ' as not a valid user')
+        bot.send_message(chat_id=chat_id, text=message)
 
 
 def start(bot, update):
@@ -171,44 +181,46 @@ def get_bill(bot, update):
     user_id = update.message.chat.id
     mbs_common_logger.info('User ' + str(user_id) + ' has requested the bill')
     curr_month = datetime.datetime.today().month
-    if valid_users_mbs[str(user_id)]:
-        sql_stmt = \
-            'Select Item_name, cost, qty, purchase_time from purchase_order, items where T_id = %s ' \
-            'and Id = item_id and MONTH(purchase_time)=%s'
-        parms = (user_id, curr_month,)
-        db_result = execute_query(sql_stmt, parms, 1)
+    try:
+        if valid_users_mbs[str(user_id)]:
+            sql_stmt = \
+                'Select Item_name, cost, qty, purchase_time from purchase_order, items where T_id = %s ' \
+                'and Id = item_id and MONTH(purchase_time)=%s'
+            parms = (user_id, curr_month,)
+            db_result = execute_query(sql_stmt, parms, 1)
 
-        df = get_bill_data(db_result)
-        generate_bill_pdf(df, user_id)
-        aws_url = upload_bill_to_s3_and_get_object_path(user_id)
+            df = get_bill_data(db_result)
+            generate_bill_pdf(df, user_id)
+            aws_url = upload_bill_to_s3_and_get_object_path(user_id)
 
-        mbs_common_logger.info('Bill has been sent to the User: ' + str(user_id) + '. The file path:' + aws_url)
-        bot.sendDocument(update.message.chat_id, aws_url)
+            mbs_common_logger.info('Bill has been sent to the User: ' + str(user_id) + '. The file path:' + aws_url)
+            bot.sendDocument(update.message.chat_id, aws_url)
 
-    else:
-        message = please_register_message
+    except :
+        message = 'You are not registered hence cannot pay bill you silly, \n' + please_register_message
         mbs_common_logger.info('Denied getbill request for the user ' + str(user_id) + ' as not a valid user')
         bot.send_message(chat_id=update.message.chat_id, text=message)
 
 
 def get_bills(bot, update):
+    global valid_users_mbs
     user_id = update.message.chat.id
     mbs_common_logger.info('User ' + str(user_id) + ' has requested the bill history')
+    try:
+        if valid_users_mbs[str(user_id)]:
+            sql_stmt = 'Select DATE_FORMAT(billed_time,"%%Y-%%m") as billed_month, cost from bill_history where T_id = %s'
+            parms = (user_id,)
+            try:
+                db_result = execute_query(sql_stmt, parms, 1)
+            except Exception as e:
+                mbs_common_logger.critical(e)
+            if db_result:
+                message = 'Your bill history is  \n' + 'yyyy-mm Cost\n' + get_billed_history(db_result)
+            else:
+                message = 'No purchase record'
 
-    if valid_users_mbs[str(user_id)]:
-        sql_stmt = 'Select DATE_FORMAT(billed_time,"%%Y-%%m") as billed_month, cost from bill_history where T_id = %s'
-        parms = (user_id,)
-        try:
-            db_result = execute_query(sql_stmt, parms, 1)
-        except Exception as e:
-            mbs_common_logger.critical(e)
-        if db_result:
-            message = 'Your bill history is  \n' + 'yyyy-mm Cost\n' + get_billed_history(db_result)
-        else:
-            message = 'No purchase record'
-
-    else:
-        message = please_register_message
+    except :
+        message = 'You are not registered hence cannot pay bill you silly, \n' + please_register_message
         mbs_common_logger.info('Denied bill history request for the user ' + str(user_id) + ' as not a valid user')
 
     bot.send_message(chat_id=update.message.chat_id, text=message)
