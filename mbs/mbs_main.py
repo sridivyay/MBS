@@ -59,6 +59,7 @@ def get_item_quantity_telegram_buttons(item_button_id):
 
 
 def telegram_slot_input_options():
+    global cancel_button
     button_list = [
         InlineKeyboardButton("Breakfast", callback_data=0),
         InlineKeyboardButton("Lunch", callback_data=1),
@@ -74,6 +75,16 @@ def telegram_slot_menu_operations(slot):
         InlineKeyboardButton("Extra", callback_data=slot_vs_callback_data[slot] + 1),
     ]
     reply_markup = InlineKeyboardMarkup([button_list, cancel_button])
+    return reply_markup
+
+
+def get_cancellation_reasons():
+    button_list = [
+        InlineKeyboardButton("Hate food", callback_data='C1'),
+        InlineKeyboardButton("Hate Telegram", callback_data='C2'),
+        InlineKeyboardButton("I am hungry", callback_data='C3')
+    ]
+    reply_markup = InlineKeyboardMarkup([button_list])
     return reply_markup
 
 
@@ -196,7 +207,7 @@ def get_bill(bot, update):
             mbs_common_logger.info('Bill has been sent to the User: ' + str(user_id) + '. The file path:' + aws_url)
             bot.sendDocument(update.message.chat_id, aws_url)
 
-    except :
+    except:
         message = 'You are not registered hence cannot pay bill you silly, \n' + please_register_message
         mbs_common_logger.info('Denied getbill request for the user ' + str(user_id) + ' as not a valid user')
         bot.send_message(chat_id=update.message.chat_id, text=message)
@@ -219,7 +230,7 @@ def get_bills(bot, update):
             else:
                 message = 'No purchase record'
 
-    except :
+    except:
         message = 'You are not registered hence cannot pay bill you silly, \n' + please_register_message
         mbs_common_logger.info('Denied bill history request for the user ' + str(user_id) + ' as not a valid user')
 
@@ -351,11 +362,29 @@ def button_handlers(bot, update):
         return ConversationHandler.END
 
     elif button_call_back_data == 'Cancel':
-        menu_message = 'Cancelled. Hey foodie are you upset with the menu today.'
+        user_id = str(query.message.chat.id)
+        mbs_common_logger.info('User: ' + user_id + ' has cancelled.')
+        menu_message = 'Cancelled. Hey foodie why are you upset with the menu today?'
+        reply_markup = get_cancellation_reasons()
         bot.edit_message_text(text=menu_message,
                               chat_id=query.message.chat_id,
-                              message_id=query.message.message_id)
-        return ConversationHandler.END
+                              message_id=query.message.message_id, reply_markup=reply_markup)
+        check = 1
+
+    elif button_call_back_data == 'C1' or button_call_back_data == 'C2':
+
+        chat_id = query.message.chat_id
+        sql_insert_query = """ INSERT INTO user_review(T_id, r_id) VALUES (%s,%s) """
+        records_to_insert = (chat_id, button_call_back_data)
+        try:
+            result = insert_details(sql_insert_query, records_to_insert)
+        except:
+            mbs_common_logger.critical('Insertion failed into user_review for' + str(sql_insert_query))
+
+        menu_message = 'Sorry we made you upset. We will try to improve'
+
+    elif button_call_back_data == 'C3':
+        menu_message = 'Sorry we made you upset. We will try to improve\n For the little foodie in you use /menu'
 
     if check == 0:
         bot.edit_message_text(text=menu_message,
