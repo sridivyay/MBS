@@ -135,6 +135,7 @@ def is_menu_for_day_requested(day):
 def start(bot, update):
     message = 'Hi Foodie,\nWelcome to the mess billing system.\n' \
               '/menu - to get the Menu\n' + '/bill - to get month bill\n' + '/bills - history of bills\n' + \
+              '/register - Register for MBS ' + \
               '/paybill - pay mess bill for the month\n You  can chat with the bot.\n Happy chatting'
     mbs_common_logger.info('User ' + str(update.message.chat.id) + ' has initiated start')
     bot.send_message(chat_id=update.message.chat_id, text=message)
