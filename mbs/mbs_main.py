@@ -7,7 +7,8 @@ import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import Updater, ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
-from mbs.commons import is_empty, is_valid_slot, get_billed_history, index_to_month, load_initial_configuration
+from mbs.commons import is_empty, is_valid_slot, get_billed_history, index_to_month, load_initial_configuration, \
+    week_day_to_index
 from mbs.mbs_aws import upload_bill_to_s3_and_get_object_path
 from mbs.mbs_bill_format import get_bill_data, generate_bill_pdf
 from mbs.mbs_classes import MessMenu
@@ -17,6 +18,7 @@ from mbs.mbs_exceptions import InsertionFailed, TelegramTokenMissing
 from mbs.mbs_log import init_logger
 
 # globals
+from mbs.mbs_menu_retrieve import get_menu_for_day
 
 mbs_common_logger = None
 database_config = ''
@@ -120,6 +122,14 @@ def pay_monthly_mess_bill(bot, update):
         message = 'You are not registered hence cannot pay bill you silly, \n' + please_register_message
         mbs_common_logger.info('Denied pay bill request for the user ' + str(chat_id) + ' as not a valid user')
         bot.send_message(chat_id=chat_id, text=message)
+
+
+def is_menu_for_day_requested(day):
+    try:
+        week_day_index = week_day_to_index[day]
+        return week_day_index
+    except:
+        return 0
 
 
 def start(bot, update):
@@ -461,16 +471,22 @@ def register_user_in_database(bot, update, chat_data):
 
 
 def parse_user_request(bot, update, user_data=None):
+    message = str(update.message.text.lower())
     if update.message.text.lower().find('help') != -1 or update.message.text.lower().find('start') != -1 or \
             update.message.text.lower().find('hello') != -1 or update.message.text.lower().find('hi') != -1:
-        start(bot, update)
+        return start(bot, update)
 
     elif update.message.text.lower().find('hungry') != -1 or update.message.text.lower().find('food') != -1 or \
             update.message.text.find('menu') != -1 or update.message.text.find('bored') != -1 or \
             update.message.text.find('tired') != -1 or update.message.text.find('lazy') != -1:
-        menu(bot, update)
+        return menu(bot, update)
     elif update.message.text.lower().find('daily') != -1:
-        daily(bot, update)
+        return daily(bot, update)
+
+    elif is_menu_for_day_requested(str(message)):
+        menu_for_day = get_menu_for_day(is_menu_for_day_requested(str(message)))
+        bot.send_message(chat_id=update.message.chat_id, text=menu_for_day)
+        mbs_common_logger.info('Sent menu for the user: ' + str(update.message.chat_id) + menu_for_day)
     else:
         bot.send_message(chat_id=update.message.chat_id, text='Could not understand. use /help for more info')
 

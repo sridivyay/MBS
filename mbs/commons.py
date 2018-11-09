@@ -26,6 +26,15 @@ index_to_month = {"9": "September",
                   "10": "October"
                   }
 
+week_day_to_index = {"monday": "0",
+                     "tuesday": "1",
+                     "wednesday": "2",
+                     "thursday": "3",
+                     "friday": "4",
+                     "saturday": "5",
+                     "sunday": "6"
+                     }
+
 
 def load_initial_configuration(config_file_path):
     mbs_common_logger = init_logger()
